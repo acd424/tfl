@@ -1,0 +1,379 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Load packages
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(flextable)
+```
+Load the data
+```{r}
+load('tfl_data_2.Rdata')
+load('ldn_mob_data.Rdata')
+
+```
+Find y-o-y changes for the data so 2019 to 2020/21
+```{r}
+max(ldn_mob_data$date)
+min(ldn_mob_data$date)
+max(tfl_data_2$date)
+min(tfl_data_2$date)
+
+paste('The date period of interest is from ', min(ldn_mob_data$date), ' to ' , max(tfl_data_2$date) )
+
+
+
+pan_tfl = tfl_data_2 %>% group_by(date, LAD19NM, entryexit, mode) %>%
+  summarise(count = sum(n,na.rm = T))%>%
+  filter(date > as.Date("2020-02-14") ) %>%
+  ungroup()
+
+bus_exit_missing_dates= pan_tfl %>% filter(mode == 'Bus')%>%
+  select(date, entryexit) %>% distinct() %>% mutate(n = 1) %>% 
+     pivot_wider(id_cols = c(date), names_from = entryexit, values_from = n, values_fill = list(n = 0)) %>%
+  filter(`Exit/Alighting` == 0) %>%
+  pull(date)
+
+rail_exit_missing_dates = pan_tfl %>% filter(mode == 'Rail')%>%
+  select(date, entryexit) %>% distinct() %>% mutate(n = 1) %>% 
+     pivot_wider(id_cols = c(date), names_from = entryexit, values_from = n, values_fill = list(n = 0))%>%
+  filter(`Exit/Alighting` == 0) %>%
+  pull(date)
+
+
+
+pan_tfl = tfl_data_2 %>% group_by(date, LAD19NM, entryexit, mode) %>%
+  summarise(count = sum(n,na.rm = T))%>%filter(date > as.Date("2020-02-14") ) %>%
+  ungroup() %>%
+  filter(!date %in% bus_exit_missing_dates) %>%
+  #filter(!date %in% c(ymd("2020-02-29"))) %>%  # remove leap year day as no comparrison data
+  mutate(week = week(date)) %>%
+  mutate(dow = wday(date)) %>%
+  mutate(year = year(date))%>%
+  mutate(year_2 = ifelse(year == '2020',1,2))%>%
+  mutate(rel_date = paste(year_2, week, dow, sep = '-'))
+          
+
+# the tfl has missing exit dates so remove all of this data
+
+# to match feb 2020 to april 19th
+x = tfl_data_2 %>% 
+  group_by(date, LAD19NM, entryexit, mode) %>%
+  summarise(count = sum(n,na.rm = T))%>%
+  ungroup()%>%
+  filter(date > as.Date("2019-02-14") & date < as.Date("2019-04-20")) %>%
+  mutate(year = 1)
+
+# to match may 25th to end 2019
+y = tfl_data_2%>% 
+  group_by(date, LAD19NM, entryexit, mode) %>%
+  summarise(count = sum(n,na.rm = T))%>%
+  ungroup()%>%
+  filter(date > as.Date("2019-05-24") & date < as.Date("2020-01-01"))%>%
+  mutate(year = 1)
+
+# to match beginning 2021 to Aug 2021
+z = tfl_data_2%>% 
+  group_by(date, LAD19NM, entryexit, mode) %>%
+  summarise(count = sum(n,na.rm = T))%>%
+  ungroup()%>%
+  filter(date > as.Date("2018-12-31") & date < as.Date("2019-09-01"))%>%
+  mutate(year = 2)
+
+
+pre_pan_tfl_2019_match = bind_rows(x,y,z)%>%
+  filter(!date %in% bus_exit_missing_dates) %>%
+  #filter(!date %in% c(ymd("2020-02-29"))) %>%  # remove leap year day as no comparrison data
+  mutate(week = week(date)) %>%
+  mutate(dow = wday(date)) %>%
+  mutate(rel_date = paste(year, week, dow, sep = '-'))
+
+
+Both_data = full_join(pre_pan_tfl_2019_match, pan_tfl, by = c("rel_date" = "rel_date", "LAD19NM" = "LAD19NM", "entryexit" = "entryexit", 'mode' = 'mode' )) %>%
+  filter(complete.cases(.)) %>%
+  select(rel_date, LAD19NM, entryexit, mode,count.x, count.y, date.x, date.y) %>%
+  mutate(change = 100*(count.y - count.x )/ count.x)
+
+
+```
+
+
+Plots for all boroughs for rail Entries
+```{r}
+
+boroughs = unique(ldn_mob_data$sub_region_2_clean)
+
+counts = Both_data %>% filter(mode == 'Rail') %>%
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(date.y, change, LAD19NM)
+
+mob_change = ldn_mob_data  %>%
+  mutate(date = ymd(date)) %>%
+  select(date, transit_stations, sub_region_2_clean)
+
+joined_data = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)
+
+
+g = ggplot(joined_data, aes(x = date.y, y = change))+
+  geom_line(colour = 'red')+
+  geom_line(aes(x = date.y, y= transit_stations), colour = 'black' )+
+  scale_y_continuous(limits = c(-110,10))+
+  theme_bw()+
+  facet_wrap(~LAD19NM)
+```
+
+
+Plots for all boroughs for Bus entires
+```{r}
+boroughs = unique(ldn_mob_data$sub_region_2_clean)
+
+counts = Both_data %>% filter(mode == 'Bus') %>%
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(date.y, change, LAD19NM)
+
+mob_change = ldn_mob_data  %>%
+  mutate(date = ymd(date)) %>%
+  select(date, transit_stations, sub_region_2_clean)
+
+joined_data = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)
+
+
+
+g = ggplot(joined_data, aes(x = date.y, y = change))+
+  geom_line(colour = 'green')+
+  geom_line(aes(x = date.y, y= transit_stations), colour = 'black' )+
+  scale_y_continuous(limits = c(-110,10))+
+  theme_bw()+
+  facet_wrap(~LAD19NM)
+```
+
+
+Plots for all boroughs for Bus+Rail entires
+```{r}
+boroughs = unique(ldn_mob_data$sub_region_2_clean)
+
+bus_rail_comb = Both_data %>% 
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(rel_date, LAD19NM, entryexit, mode,count.x, count.y, date.x, date.y) %>%
+  group_by(rel_date, LAD19NM, entryexit,date.x, date.y)%>%
+  summarise(count.x_both = sum(count.x), count.y_both = sum(count.y)) %>%
+  ungroup() %>%
+  distinct()%>%
+  mutate(change = 100*(count.y_both - count.x_both )/ count.x_both) %>%
+  mutate(mode = 'bus_rail')
+
+counts = bus_rail_comb %>%
+  filter(mode == 'bus_rail') %>%
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(date.y, change, LAD19NM)
+
+mob_change = ldn_mob_data  %>%
+  mutate(date = ymd(date)) %>%
+  select(date, transit_stations, sub_region_2_clean)
+
+joined_data = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)
+
+
+
+g = ggplot(joined_data, aes(x = date.y, y = change))+
+  geom_line( colour = 'orange' )+
+  geom_line(aes(x = date.y, y= transit_stations), colour = 'black' )+
+  scale_y_continuous(limits = c(-110,10))+
+  theme_bw()+
+  facet_wrap(~LAD19NM)
+```
+Euclidean distances to measure similarity
+
+```{r}
+get_euclidean_dist = function(data, mode_type, dow = FALSE, dates_to_remove){
+
+counts = data %>% filter(mode == mode_type) %>%
+  filter(!date.y %in% dates_to_remove)%>%
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(date.y, change, LAD19NM)
+
+mob_change = ldn_mob_data  %>%
+  mutate(date = ymd(date)) %>%
+  select(date, transit_stations, sub_region_2_clean)
+
+if(!dow){
+dists = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)%>% 
+  mutate(sq_dif = ((change) - (transit_stations))^2) %>%
+  group_by(LAD19NM) %>%
+  summarise(dist = (sum(sq_dif)), count = n())%>%
+  ungroup() %>%
+  mutate(adj_dist = dist/count )
+}else{
+
+dists = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)%>% 
+  mutate(sq_dif = ((change) - (transit_stations))^2) %>%
+  mutate(dow = wday(date.y, label = T))%>%
+  group_by(dow) %>%
+  summarise(dist = (sum(sq_dif)), count = n())%>%
+  ungroup() %>%
+  mutate(adj_dist = dist/count )
+}
+
+return(dists)
+}
+
+
+```
+
+Use function to get the distances by borough
+```{r}
+bus_dists = get_euclidean_dist(Both_data, 'Bus', dates_to_remove = c('')) %>% select(LAD19NM,dist_b = adj_dist)
+
+bus_dists = get_euclidean_dist(Both_data, 'Bus', dates_to_remove = c(as.Date('2020-12-23'))) %>% select(LAD19NM,dist_b = adj_dist)
+
+rail_dists = get_euclidean_dist(Both_data, 'Rail', dates_to_remove = c(as.Date('2020-12-23'))) %>% select(LAD19NM,dist_r = adj_dist)
+
+comb_dists = get_euclidean_dist(bus_rail_comb, 'bus_rail', dates_to_remove = c(as.Date('2020-12-23'))) %>% select(LAD19NM,dist_b_r = adj_dist)
+
+all_dists = left_join(comb_dists, rail_dists) %>% left_join(bus_dists)
+
+flextable(all_dists)
+
+```
+
+Use function to get dist by day of the week
+```{r}
+
+
+
+bus_dists_dow_x = get_euclidean_dist(Both_data, 
+                                   'Bus', 
+                                   dow = T ,
+                                   dates_to_remove = c(as.Date('2020-12-23'))) %>% 
+  select(dow,dist_b = adj_dist)
+
+
+rail_dists_dow = get_euclidean_dist(Both_data,
+                                    'Rail',
+                                    dow = T,
+                                    dates_to_remove = c(as.Date('2020-12-23'))) %>%
+  select(dow,dist_r = adj_dist)
+
+comb_dists_dow = get_euclidean_dist(bus_rail_comb,
+                                    'bus_rail',
+                                    dow = T,
+                                    dates_to_remove = c(as.Date('2020-12-23'))) %>% 
+  select(dow,dist_b_r = adj_dist)
+
+all_dists_dow = left_join(comb_dists_dow, rail_dists_dow) %>% left_join(bus_dists_dow)
+
+flextable(all_dists_dow)
+```
+
+20 largest diff days
+```{r}
+
+get_biggest_change_days= function(data,mode_type, n){
+counts = data %>% filter(mode == mode_type) %>%
+  filter(entryexit == 'Entry/Boarding') %>%
+  select(date.y, change, LAD19NM)
+
+mob_change = ldn_mob_data  %>%
+  mutate(date = ymd(date)) %>%
+  select(date, transit_stations, sub_region_2_clean)
+
+
+changes = left_join(counts, mob_change, by = c('LAD19NM'= 'sub_region_2_clean', 'date.y' = 'date')) %>%
+  filter(LAD19NM %in% boroughs)%>% 
+  mutate(abs_change = abs(change))%>%
+  arrange(desc(abs_change)) %>%
+  group_by(LAD19NM) %>%
+  top_n(n) %>%
+  ungroup() %>%
+  group_by(date.y)%>%
+  summarise(count = n(), tot_change = sum(abs_change)) %>%
+  mutate(dow = wday(date.y, label = T)) %>%
+  arrange(desc(count))
+
+
+}
+
+bus_days = get_biggest_change_days(Both_data, 'Bus', n = 10)%>% 
+  select(date.y, dow, count_bus = count, tot_change_b = tot_change)
+
+rail_days = get_biggest_change_days(Both_data, 'Rail', n = 10)%>% 
+  select(date.y, dow, count_rail = count, tot_change_r = tot_change)
+
+comb_days = get_biggest_change_days(bus_rail_comb,
+                                    'bus_rail',
+                                    n= 10) %>% 
+  select(date.y, dow, count_all = count, tot_change_a = tot_change)
+
+
+all_days = full_join(comb_days, rail_days) %>% full_join(bus_days)
+
+flextable(all_days)
+```
+Remove christmas 
+```{r}
+bus_dists_x = get_euclidean_dist(Both_data %>% filter(!date.y == '2020-12-23'), 'Bus') %>% select(LAD19NM,dist_b = adj_dist)
+
+bus_dists_dow_x = get_euclidean_dist(Both_data%>% filter(!date.y == '2020-12-23'), 'Bus', dow = T) %>% select(dow,dist_b = adj_dist)
+```
+
+
+
+```{r}
+x = Both_data %>% filter(LAD19NM == 'Westminster') %>% mutate(dow = wday(date.y)) %>% filter(dow == '4') %>%pull(change)
+
+plot(x)
+```
+
+
+
+```{r}
+summary(tfl_data_2)
+
+
+
+max(tfl_data_2$date)
+min(tfl_data_2$date)
+
+counts = tfl_data_2 %>% 
+  group_by(mode, entryexit) %>%
+  summarise(count = sum(n))
+
+unique(tfl_data_2$mode)
+length(unique(tfl_data_2$lsoa_2011))
+unique(tfl_data_2$period)
+
+dates = data.frame(date = rep(seq.Date(as.Date("2018-05-01"),as.Date("2021-08-31") , by = 'day'), each = 4))
+
+tfl_daily_counts = tfl_data_2 %>% 
+  group_by(date, mode, entryexit) %>%
+  summarise(count = sum(n)) %>% 
+  ungroup() %>%
+  full_join(dates ) %>% 
+  mutate(type = paste(mode, entryexit))
+
+
+
+ggplot(tfl_daily_counts %>% filter(!is.na(mode)), aes(x = date , y = count, colour = type))+
+  geom_line()+
+  theme_bw()+
+  facet_wrap(~type, ncol = 1, scales =  'free_y')
+
+
+missing_counts = tfl_daily_counts %>% dplyr::filter(count == 0) %>% unique()
+
+
+
+
+
+```
+
