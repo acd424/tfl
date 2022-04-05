@@ -45,3 +45,10 @@ vignettes/*.pdf
 *.pdf
 
 *.html
+
+
+# Mac crap
+.DS_Store
+
+# Python
+.ipynb_checkpoints/
