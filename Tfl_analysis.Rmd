@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 Load packages
@@ -13,8 +15,9 @@ library(flextable)
 ```
 Load the data
 ```{r}
-load('tfl_data_2.Rdata')
-load('ldn_mob_data.Rdata')
+load('data/rdata/tfl_data_2.Rdata')
+# load('data/rdata/ldn_mob_data.Rdata')
+load('data/rdata/ldn_mob_data_15052023.Rdata')
 
 ```
 Find y-o-y changes for the data so 2019 to 2020/21
@@ -24,7 +27,7 @@ min(ldn_mob_data$date)
 max(tfl_data_2$date)
 min(tfl_data_2$date)
 
-paste('The date period of interest is from ', min(ldn_mob_data$date), ' to ' , max(tfl_data_2$date) )
+# paste('The date period of interest is from ', min(ldn_mob_data$date), ' to ' , max(tfl_data_2$date) )
 
 
 

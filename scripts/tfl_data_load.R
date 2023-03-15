@@ -2,9 +2,14 @@ library(tidyverse)
 library(janitor)
 
 ##### LSOA data #######
-#https://data.gov.uk/dataset/9e14de72-df2a-4bbe-b131-1844394e8368/lower-layer-super-output-area-2011-to-ward-2019-lookup-in-england-and-wales
 
+# Sam: the download link does not work as of 15 March 2023.
+# https://data.gov.uk/dataset/9e14de72-df2a-4bbe-b131-1844394e8368/lower-layer-super-output-area-2011-to-ward-2019-lookup-in-england-and-wales
 lsoa_table <- read_csv("data/Lower_Layer_Super_Output_Area__2011__to_Ward__2019__Lookup_in_England_and_Wales.csv")
+
+# Alternative:
+# https://geoportal.statistics.gov.uk/datasets/ons::lower-layer-super-output-area-2011-to-ward-2019-lookup-in-england-and-wales-1/explore
+# lsoa_table <- read_csv("data/Lower_Layer_Super_Output_Area_(2011)_to_Ward_(2019)_Lookup_in_England_and_Wales.csv")
 
 ######## tfl data ########
 
