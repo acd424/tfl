@@ -4,6 +4,7 @@ library(dplyr)
 library(lubridate)
 library(stringr)
 library(tidyr)
+library(ggplot2)
 
 # Set language for Dutch server.
 Sys.setlocale("LC_TIME", "English")
@@ -83,9 +84,12 @@ ldn_mob_data %>%
   theme(legend.position = "none")
 
 # Save.
-save(ldn_mob_data, file = 'data/rdata/ldn_mob_data_15052023.Rdata')
+# save(ldn_mob_data, file = 'data/rdata/ldn_mob_data_15052023.Rdata')
 
 # ==============================================================================
+
+# Load
+# load('data/rdata/ldn_mob_data_15052023.Rdata')
 
 max(ldn_mob_data$date)
 max(ldn_mob_data$date_lub)
@@ -276,5 +280,40 @@ bus_time_compare_borough_gg <- joined_long_data %>%
 ggsave(plot = bus_time_compare_borough_gg,
        filename = "visuals/bus_time_compare_borough.png",
        height = 28, width = 15, unit = "cm", dpi = 300)
+
+# Explore correlation analysis.
+barnet_tfl_df <- joined_long_data %>% 
+  filter(LocalAuthority == "Barnet" & measure == "tfl_measure") %>% 
+  arrange(value) %>% 
+  mutate(date_day_char = as.character(date_day))
+
+
+tfl_test_df <- barnet_tfl_df %>% 
+  mutate(date_day_fac = forcats::fct_relevel(date_day_char, unique(date_day_char)))
+
+barnet_goo_df <- joined_long_data %>% 
+  filter(LocalAuthority == "Barnet" & measure == "google_measure") %>% 
+  arrange(value) %>% 
+  mutate(date_day_char = as.character(date_day))
+
+
+goo_test_df <- barnet_goo_df %>% 
+  mutate(date_day_fac = forcats::fct_relevel(date_day_char, unique(date_day_char)))
+
+# Bind.
+goo_tfl_test_df <- bind_rows(tfl_test_df, goo_test_df)
+
+ggplot(data = goo_tfl_test_df) +
+  geom_point(mapping = aes(x = date_day_fac, y = value, group = measure,
+                           colour = measure))
+
+# Test 2.
+goo_test_2_df <- barnet_goo_df %>% 
+  mutate(date_day_fac = forcats::fct_relevel(date_day_char, unique(barnet_tfl_df$date_day_char)))
+
+ggplot(data = goo_test_2_df,
+       mapping = aes(x = as.numeric(date_day_fac), y = value)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) 
 
 
